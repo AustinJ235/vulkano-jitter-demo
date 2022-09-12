@@ -1,13 +1,11 @@
 use std::sync::Arc;
-use std::collections::VecDeque;
-use std::time::{Instant, Duration};
 
 use bytemuck::{Pod, Zeroable};
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, RenderPassBeginInfo, SubpassContents,
 };
-use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
+use vulkano::device::physical::PhysicalDeviceType;
 use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageAccess, ImageUsage, SwapchainImage};
@@ -26,6 +24,8 @@ use vulkano_win::VkSurfaceBuild;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
+use std::collections::VecDeque;
+use std::time::{Duration, Instant};
 
 fn main() {
     let library = VulkanLibrary::new().unwrap();
@@ -51,12 +51,18 @@ fn main() {
         ..DeviceExtensions::empty()
     };
 
-    let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
-        .filter(|&p| p.supported_extensions().contains(&device_extensions))
+    let (physical_device, queue_family_index) = instance
+        .enumerate_physical_devices()
+        .unwrap()
+        .filter(|p| p.supported_extensions().contains(&device_extensions))
         .filter_map(|p| {
-            p.queue_families()
-                .find(|&q| q.supports_graphics() && q.supports_surface(&surface).unwrap_or(false))
-                .map(|q| (p, q))
+            p.queue_family_properties()
+                .iter()
+                .enumerate()
+                .position(|(i, q)| {
+                    q.queue_flags.graphics && p.surface_support(i as u32, &surface).unwrap_or(false)
+                })
+                .map(|i| (p, i as u32))
         })
         .min_by_key(|(p, _)| {
             match p.properties().device_type {
@@ -74,7 +80,11 @@ fn main() {
         physical_device,
         DeviceCreateInfo {
             enabled_extensions: device_extensions,
-            queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+            queue_create_infos: vec![QueueCreateInfo {
+                queue_family_index,
+                ..Default::default()
+            }],
+
             ..Default::default()
         },
     )
@@ -83,12 +93,14 @@ fn main() {
     let queue = queues.next().unwrap();
 
     let (mut swapchain, images) = {
-        let surface_capabilities = physical_device
+        let surface_capabilities = device
+            .physical_device()
             .surface_capabilities(&surface, Default::default())
             .unwrap();
 
         let image_format = Some(
-            physical_device
+            device
+                .physical_device()
                 .surface_formats(&surface, Default::default())
                 .unwrap()[0]
                 .0,
@@ -222,6 +234,7 @@ fn main() {
 
     let mut times: VecDeque<Duration> = VecDeque::with_capacity(TIMES_MAX_LEN);
     let mut times_iter_since_out = 0;
+    let mut previous_present = Instant::now();
 
     event_loop.run(move |event, _, control_flow| {
         match event {
@@ -238,7 +251,6 @@ fn main() {
                 recreate_swapchain = true;
             },
             Event::RedrawEventsCleared => {
-                let time_start = Instant::now();
                 let dimensions = surface.window().inner_size();
 
                 if dimensions.width == 0 || dimensions.height == 0 {
@@ -261,13 +273,11 @@ fn main() {
                         };
 
                     swapchain = new_swapchain;
-
                     framebuffers = window_size_dependent_setup(
                         &new_images,
                         render_pass.clone(),
                         &mut viewport,
                     );
-
                     recreate_swapchain = false;
                 }
 
@@ -287,7 +297,7 @@ fn main() {
 
                 let mut builder = AutoCommandBufferBuilder::primary(
                     device.clone(),
-                    queue.family(),
+                    queue.queue_family_index(),
                     CommandBufferUsage::OneTimeSubmit,
                 )
                 .unwrap();
@@ -334,7 +344,7 @@ fn main() {
                     },
                 }
 
-                times.push_back(time_start.elapsed());
+                times.push_back(previous_present.elapsed());
 
                 if times.len() > TIMES_MAX_LEN {
                     times.pop_front();
@@ -352,6 +362,8 @@ fn main() {
                 } else {
                     times_iter_since_out += 1;
                 }
+
+                previous_present = Instant::now();
             },
             _ => (),
         }

@@ -1081,7 +1081,6 @@ dependencies = [
 [[package]]
 name = "vulkano"
 version = "0.30.0"
-source = "git+https://github.com/vulkano-rs/vulkano.git#896b49e92e5ddd05cb4966d8b4711befbed424da"
 dependencies = [
  "ash",
  "bytemuck",
@@ -1118,7 +1117,6 @@ dependencies = [
 [[package]]
 name = "vulkano-shaders"
 version = "0.30.0"
-source = "git+https://github.com/vulkano-rs/vulkano.git#896b49e92e5ddd05cb4966d8b4711befbed424da"
 dependencies = [
  "heck",
  "proc-macro2",
@@ -1131,7 +1129,6 @@ dependencies = [
 [[package]]
 name = "vulkano-win"
 version = "0.30.0"
-source = "git+https://github.com/vulkano-rs/vulkano.git#896b49e92e5ddd05cb4966d8b4711befbed424da"
 dependencies = [
  "core-graphics-types",
  "objc",
